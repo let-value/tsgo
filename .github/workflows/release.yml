@@ -26,17 +26,23 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          targets: wasm32-wasip2
 
       - name: Cache Cargo build output
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: true
 
-      - name: Build extension
-        run: cargo build --locked --release --target wasm32-wasip1
+      - name: Install Zed extension packager
+        run: |
+          cargo install \
+            --git https://github.com/zed-industries/zed \
+            --rev 97110fd5a119eb5fad49524dc04d7c042193e8ab \
+            --package extension_cli \
+            --bin zed-extension \
+            --locked
 
-      - name: Package extension
+      - name: Build and package extension
         id: package
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -45,21 +51,19 @@ jobs:
             version="${version#v}"
           fi
 
-          package_dir="dist/tsgo-${version}"
-          asset_name="tsgo-${version}.tar.gz"
+          mkdir -p dist scratch
+          zed-extension \
+            --source-dir . \
+            --output-dir dist \
+            --scratch-dir scratch
 
-          mkdir -p "${package_dir}"
-          cp extension.toml "${package_dir}/"
-          cp README.md "${package_dir}/"
-          cp LICENSE "${package_dir}/"
-          cp target/wasm32-wasip1/release/tsgo.wasm "${package_dir}/extension.wasm"
+          mv dist/archive.tar.gz "dist/tsgo-${version}.tar.gz"
+          mv dist/manifest.json "dist/tsgo-${version}.manifest.json"
+          sha256sum "dist/tsgo-${version}.tar.gz" > "dist/tsgo-${version}.tar.gz.sha256"
 
-          tar -czf "dist/${asset_name}" -C "${package_dir}" .
-          sha256sum "dist/${asset_name}" > "dist/${asset_name}.sha256"
-
-          echo "asset_name=${asset_name}" >> "${GITHUB_OUTPUT}"
-          echo "asset_path=dist/${asset_name}" >> "${GITHUB_OUTPUT}"
-          echo "checksum_path=dist/${asset_name}.sha256" >> "${GITHUB_OUTPUT}"
+          echo "asset_path=dist/tsgo-${version}.tar.gz" >> "${GITHUB_OUTPUT}"
+          echo "manifest_path=dist/tsgo-${version}.manifest.json" >> "${GITHUB_OUTPUT}"
+          echo "checksum_path=dist/tsgo-${version}.tar.gz.sha256" >> "${GITHUB_OUTPUT}"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -68,4 +72,5 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: |
             ${{ steps.package.outputs.asset_path }}
+            ${{ steps.package.outputs.manifest_path }}
             ${{ steps.package.outputs.checksum_path }}
