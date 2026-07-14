@@ -1,0 +1,71 @@
+name: Build extension release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to create or update, for example v0.0.5"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - name: Cache Cargo build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+
+      - name: Build extension
+        run: cargo build --locked --release --target wasm32-wasip1
+
+      - name: Package extension
+        id: package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${{ inputs.tag_name }}"
+            version="${version#v}"
+          fi
+
+          package_dir="dist/tsgo-${version}"
+          asset_name="tsgo-${version}.tar.gz"
+
+          mkdir -p "${package_dir}"
+          cp extension.toml "${package_dir}/"
+          cp README.md "${package_dir}/"
+          cp LICENSE "${package_dir}/"
+          cp target/wasm32-wasip1/release/tsgo.wasm "${package_dir}/extension.wasm"
+
+          tar -czf "dist/${asset_name}" -C "${package_dir}" .
+          sha256sum "dist/${asset_name}" > "dist/${asset_name}.sha256"
+
+          echo "asset_name=${asset_name}" >> "${GITHUB_OUTPUT}"
+          echo "asset_path=dist/${asset_name}" >> "${GITHUB_OUTPUT}"
+          echo "checksum_path=dist/${asset_name}.sha256" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            ${{ steps.package.outputs.asset_path }}
+            ${{ steps.package.outputs.checksum_path }}
