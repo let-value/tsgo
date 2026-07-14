@@ -61,7 +61,12 @@ jobs:
           mv dist/manifest.json "dist/tsgo-${version}.manifest.json"
           sha256sum "dist/tsgo-${version}.tar.gz" > "dist/tsgo-${version}.tar.gz.sha256"
 
+          mkdir -p "dist/tsgo-${version}-dev-extension"
+          tar -xzf "dist/tsgo-${version}.tar.gz" -C "dist/tsgo-${version}-dev-extension"
+          (cd dist && zip -r "tsgo-${version}-dev-extension.zip" "tsgo-${version}-dev-extension")
+
           echo "asset_path=dist/tsgo-${version}.tar.gz" >> "${GITHUB_OUTPUT}"
+          echo "dev_extension_path=dist/tsgo-${version}-dev-extension.zip" >> "${GITHUB_OUTPUT}"
           echo "manifest_path=dist/tsgo-${version}.manifest.json" >> "${GITHUB_OUTPUT}"
           echo "checksum_path=dist/tsgo-${version}.tar.gz.sha256" >> "${GITHUB_OUTPUT}"
 
@@ -72,5 +77,6 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: |
             ${{ steps.package.outputs.asset_path }}
+            ${{ steps.package.outputs.dev_extension_path }}
             ${{ steps.package.outputs.manifest_path }}
             ${{ steps.package.outputs.checksum_path }}
